@@ -8,5 +8,37 @@
             "search-path": "/src/Lunr/Halo/"
         },
         "development-only": true
+    },
+    "Lunr.Ticks": {
+        "url": "https://github.com/lunr-php/lunr.ticks.git",
+        "version": "0.12.0",
+        "revision": "master",
+        "psr4": {
+            "prefix": "Lunr\\Ticks",
+            "search-path": "/src/Lunr/Ticks/"
+        }
+    },
+    "PhpMqtt-Client": {
+        "url": "https://github.com/php-mqtt/client.git",
+        "version": "2.2.0",
+        "psr4": {
+            "prefix": "PhpMqtt\\Client",
+            "search-path": "/src/"
+        }
+    },
+    "Psr-Log": {
+        "url": "https://github.com/php-fig/log.git",
+        "version": "3.0.0",
+        "psr4": {
+            "prefix": "Psr\\Log",
+            "search-path": "/src/"
+        }
+    },
+    "Mockery": {
+        "url": "https://github.com/mockery/mockery.git",
+        "version": "1.6.12",
+        "psr0": {
+            "path": "/library/"
+        }
     }
 }
