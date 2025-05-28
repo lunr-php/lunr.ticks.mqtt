@@ -16,6 +16,7 @@ use Lunr\Ticks\TracingControllerInterface;
 use Lunr\Ticks\TracingInfoInterface;
 use PhpMqtt\Client\Contracts\MessageProcessor;
 use PhpMqtt\Client\Contracts\Repository;
+use PhpMqtt\Client\Exceptions\MqttClientException;
 use PhpMqtt\Client\Logger;
 use PhpMqtt\Client\Message;
 use PhpMqtt\Client\MessageProcessors\Mqtt311MessageProcessor;
@@ -158,6 +159,94 @@ class MqttClient extends BaseMqttClient
         }
 
         return $data;
+    }
+
+    /**
+     * Writes some data to the socket. If a {@see $length} is given, and it is shorter
+     * than the data, only {@see $length} amount of bytes will be sent.
+     *
+     * @param string   $data   Data to write to the socket
+     * @param int|null $length The length of the data
+     *
+     * @return void
+     */
+    protected function writeToSocket(string $data, ?int $length = NULL): void
+    {
+        $startTimestamp = microtime(TRUE);
+        parent::writeToSocket($data, $length);
+        $endTimestamp = microtime(TRUE);
+
+        try
+        {
+            $message = $this->messageProcessor->parseAndValidateMessage($data);
+        }
+        catch (MqttClientException)
+        {
+            $message = NULL;
+        }
+
+        $tags = [
+            'type'   => 'MQTT-request',
+            'domain' => $this->getHost(),
+        ];
+
+        $fields = [
+            'startTimestamp' => $startTimestamp,
+            'endTimestamp'   => $endTimestamp,
+            'executionTime'  => (float) bcsub((string) $endTimestamp, (string) $startTimestamp, 4),
+        ];
+
+        $parsedData = [
+            'qualityOfService'              => 0,
+            'messageId'                     => NULL,
+            'topic'                         => NULL,
+            'acknowledgedQualityOfServices' => [],
+        ];
+
+        if ($message !== NULL)
+        {
+            $parsedData['type']                          = $message->getType()->getKey();
+            $parsedData['qualityOfService']              = $message->getQualityOfService();
+            $parsedData['messageId']                     = $message->getMessageId();
+            $parsedData['topic']                         = $message->getTopic();
+            $parsedData['acknowledgedQualityOfServices'] = $message->getAcknowledgedQualityOfServices();
+
+            if ($this->level->atLeast(AnalyticsDetailLevel::Detailed))
+            {
+                $fields['data'] = $this->prepareLogData($message->getContent());
+            }
+        }
+        elseif ((ord($data[0]) >> 4) == 1)
+        {
+            $parsedData['type'] = 'CONNECT';
+
+            if ($this->level->atLeast(AnalyticsDetailLevel::Detailed))
+            {
+                $fields['data'] = $this->prepareLogData(bin2hex($data));
+            }
+        }
+        elseif ($data == chr(0xe0) . chr(0x00))
+        {
+            $parsedData['type'] = 'DISCONNECT';
+        }
+        else
+        {
+            $parsedData['type'] = 'UNKNOWN';
+
+            if ($this->level->atLeast(AnalyticsDetailLevel::Detailed))
+            {
+                $fields['data'] = $this->prepareLogData(bin2hex($data));
+            }
+        }
+
+        $fields['url'] = $parsedData['topic'];
+
+        if ($this->level->atLeast(AnalyticsDetailLevel::Detailed))
+        {
+            $fields['requestHeaders'] = json_encode($parsedData);
+        }
+
+        $this->record($fields, $tags);
     }
 
     /**
