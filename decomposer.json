@@ -26,6 +26,14 @@
             "search-path": "/src/"
         }
     },
+    "PHP-enum": {
+        "url": "https://github.com/myclabs/php-enum.git",
+        "version": "1.8.5",
+        "psr4": {
+            "prefix": "MyCLabs\\Enum",
+            "search-path": "/src/"
+        }
+    },
     "Psr-Log": {
         "url": "https://github.com/php-fig/log.git",
         "version": "3.0.0",
