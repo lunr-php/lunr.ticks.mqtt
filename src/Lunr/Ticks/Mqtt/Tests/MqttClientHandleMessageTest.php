@@ -11,6 +11,7 @@ namespace Lunr\Ticks\Mqtt\Tests;
 
 use Lunr\Ticks\AnalyticsDetailLevel;
 use PhpMqtt\Client\MessageType;
+use RuntimeException;
 
 /**
  * This class contains the read tests for the MqttClient.
@@ -21,11 +22,11 @@ class MqttClientHandleMessageTest extends MqttClientTestCase
 {
 
     /**
-     * Test handleMessage() at analytics detail level Info.
+     * Test handleMessage() when the trace ID is unavailable.
      *
      * @covers Lunr\Ticks\Mqtt\MqttClient::handleMessage
      */
-    public function testHandleMessageAtLevelInfo(): void
+    public function testHandleMessageWithTraceIDUnavailable(): void
     {
         $this->setReflectionPropertyValue('socket', fopen('/dev/null', 'r+'));
         $this->setReflectionPropertyValue('data', [ 'topic' => 'topic' ]);
@@ -39,9 +40,300 @@ class MqttClientHandleMessageTest extends MqttClientTestCase
                           ->with('outbound_requests_log')
                           ->willReturn($this->event);
 
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn(NULL);
+
+        $this->controller->shouldNotReceive('getSpanId');
+
+        $this->controller->shouldNotReceive('getParentSpanId');
+
+        $this->controller->shouldNotReceive('getSpanSpecifictags');
+
+        $this->controller->shouldNotReceive('stopChildSpan');
+
+        $this->event->expects($this->never())
+                    ->method('addTags');
+
+        $this->event->expects($this->never())
+                    ->method('addFields');
+
+        $this->event->expects($this->once())
+                    ->method('recordTimestamp');
+
+        $this->event->expects($this->never())
+                    ->method('setTraceId');
+
+        $this->event->expects($this->never())
+                    ->method('setSpanId');
+
+        $this->event->expects($this->never())
+                    ->method('setParentSpanId');
+
+        $this->event->expects($this->never())
+                    ->method('record');
+
+        $this->message->expects($this->exactly(3))
+                      ->method('getType')
+                      ->willReturn(MessageType::PUBLISH_ACKNOWLEDGEMENT());
+
+        $this->message->expects($this->once())
+                      ->method('getQualityOfService')
+                      ->willReturn(1);
+
+        $this->message->expects($this->once())
+                      ->method('getTopic')
+                      ->willReturn('testTopic');
+
+        $this->message->expects($this->exactly(3))
+                      ->method('getMessageId')
+                      ->willReturn(10);
+
+        $floatval  = 1734352683.3516;
+        $stringval = '0.35160200 1734352683';
+
+        $this->mockFunction('microtime', fn(bool $float) => $float ? $floatval : $stringval);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Trace ID not available!');
+
+        $method = $this->getReflectionMethod('handleMessage');
+        $method->invokeArgs($this->class, [ $this->message ]);
+
+        $this->unmockFunction('microtime');
+    }
+
+    /**
+     * Test handleMessage() when the span ID is unavailable.
+     *
+     * @covers Lunr\Ticks\Mqtt\MqttClient::handleMessage
+     */
+    public function testHandleMessageWithSpanIDUnavailable(): void
+    {
+        $this->setReflectionPropertyValue('socket', fopen('/dev/null', 'r+'));
+        $this->setReflectionPropertyValue('data', [ 'topic' => 'topic' ]);
+
+        $traceID = '7b333e15-aa78-4957-a402-731aecbb358e';
+
+        $property = $this->reflection->getParentClass()->getProperty('settings');
+        $property->setAccessible(TRUE);
+        $property->setValue($this->class, $this->settings);
+
+        $this->eventLogger->expects($this->once())
+                          ->method('newEvent')
+                          ->with('outbound_requests_log')
+                          ->willReturn($this->event);
+
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn($traceID);
+
+        $this->controller->shouldReceive('getSpanId')
+                         ->once()
+                         ->andReturn(NULL);
+
+        $this->controller->shouldNotReceive('getParentSpanId');
+
+        $this->controller->shouldNotReceive('getSpanSpecifictags');
+
+        $this->controller->shouldNotReceive('stopChildSpan');
+
+        $this->event->expects($this->never())
+                    ->method('addTags');
+
+        $this->event->expects($this->never())
+                    ->method('addFields');
+
+        $this->event->expects($this->once())
+                    ->method('recordTimestamp');
+
+        $this->event->expects($this->once())
+                    ->method('setTraceId')
+                    ->with($traceID);
+
+        $this->event->expects($this->never())
+                    ->method('setSpanId');
+
+        $this->event->expects($this->never())
+                    ->method('setParentSpanId');
+
+        $this->event->expects($this->never())
+                    ->method('record');
+
+        $this->message->expects($this->exactly(3))
+                      ->method('getType')
+                      ->willReturn(MessageType::PUBLISH_ACKNOWLEDGEMENT());
+
+        $this->message->expects($this->once())
+                      ->method('getQualityOfService')
+                      ->willReturn(1);
+
+        $this->message->expects($this->once())
+                      ->method('getTopic')
+                      ->willReturn('testTopic');
+
+        $this->message->expects($this->exactly(3))
+                      ->method('getMessageId')
+                      ->willReturn(10);
+
+        $floatval  = 1734352683.3516;
+        $stringval = '0.35160200 1734352683';
+
+        $this->mockFunction('microtime', fn(bool $float) => $float ? $floatval : $stringval);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Span ID not available!');
+
+        $method = $this->getReflectionMethod('handleMessage');
+        $method->invokeArgs($this->class, [ $this->message ]);
+
+        $this->unmockFunction('microtime');
+    }
+
+    /**
+     * Test handleMessage() when the parent span ID is unavailable.
+     *
+     * @covers Lunr\Ticks\Mqtt\MqttClient::handleMessage
+     */
+    public function testHandleMessageWithParentSpanIDUnavailable(): void
+    {
+        $this->setReflectionPropertyValue('socket', fopen('/dev/null', 'r+'));
+        $this->setReflectionPropertyValue('data', [ 'topic' => 'topic' ]);
+
+        $traceID = '7b333e15-aa78-4957-a402-731aecbb358e';
+        $spanID  = '24ec5f90-7458-4dd5-bb51-7a1e8f4baafe';
+
+        $property = $this->reflection->getParentClass()->getProperty('settings');
+        $property->setAccessible(TRUE);
+        $property->setValue($this->class, $this->settings);
+
+        $this->eventLogger->expects($this->once())
+                          ->method('newEvent')
+                          ->with('outbound_requests_log')
+                          ->willReturn($this->event);
+
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn($traceID);
+
+        $this->controller->shouldReceive('getSpanId')
+                         ->once()
+                         ->andReturn($spanID);
+
+        $this->controller->shouldReceive('getParentSpanId')
+                         ->once()
+                         ->andReturn(NULL);
+
+        $this->controller->shouldNotReceive('getSpanSpecifictags');
+
+        $this->controller->shouldNotReceive('stopChildSpan');
+
+        $this->event->expects($this->never())
+                    ->method('addTags');
+
+        $this->event->expects($this->never())
+                    ->method('addFields');
+
+        $this->event->expects($this->once())
+                    ->method('recordTimestamp');
+
+        $this->event->expects($this->once())
+                    ->method('setTraceId')
+                    ->with($traceID);
+
+        $this->event->expects($this->once())
+                    ->method('setSpanId')
+                    ->with($spanID);
+
+        $this->event->expects($this->never())
+                    ->method('setParentSpanId');
+
+        $this->event->expects($this->never())
+                    ->method('record');
+
+        $this->message->expects($this->exactly(3))
+                      ->method('getType')
+                      ->willReturn(MessageType::PUBLISH_ACKNOWLEDGEMENT());
+
+        $this->message->expects($this->once())
+                      ->method('getQualityOfService')
+                      ->willReturn(1);
+
+        $this->message->expects($this->once())
+                      ->method('getTopic')
+                      ->willReturn('testTopic');
+
+        $this->message->expects($this->exactly(3))
+                      ->method('getMessageId')
+                      ->willReturn(10);
+
+        $floatval  = 1734352683.3516;
+        $stringval = '0.35160200 1734352683';
+
+        $this->mockFunction('microtime', fn(bool $float) => $float ? $floatval : $stringval);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Parent Span ID not available!');
+
+        $method = $this->getReflectionMethod('handleMessage');
+        $method->invokeArgs($this->class, [ $this->message ]);
+
+        $this->unmockFunction('microtime');
+    }
+
+    /**
+     * Test handleMessage() at analytics detail level Info.
+     *
+     * @covers Lunr\Ticks\Mqtt\MqttClient::handleMessage
+     */
+    public function testHandleMessageAtLevelInfo(): void
+    {
+        $this->setReflectionPropertyValue('socket', fopen('/dev/null', 'r+'));
+        $this->setReflectionPropertyValue('data', [ 'topic' => 'topic' ]);
+
+        $traceID      = '7b333e15-aa78-4957-a402-731aecbb358e';
+        $spanID       = '24ec5f90-7458-4dd5-bb51-7a1e8f4baafe';
+        $parentSpanID = '8b1f87b5-8383-4413-a341-7619cd4b9948';
+
+        $property = $this->reflection->getParentClass()->getProperty('settings');
+        $property->setAccessible(TRUE);
+        $property->setValue($this->class, $this->settings);
+
+        $this->eventLogger->expects($this->once())
+                          ->method('newEvent')
+                          ->with('outbound_requests_log')
+                          ->willReturn($this->event);
+
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn($traceID);
+
+        $this->controller->shouldReceive('getSpanId')
+                         ->once()
+                         ->andReturn($spanID);
+
+        $this->controller->shouldReceive('getParentSpanId')
+                         ->once()
+                         ->andReturn($parentSpanID);
+
         $this->controller->shouldReceive('getSpanSpecifictags')
                          ->once()
                          ->andReturn([ 'call' => 'controller/method' ]);
+
+        $this->controller->shouldReceive('stopChildSpan')
+                         ->once();
 
         $tags = [
             'type'   => 'MQTT-response',
@@ -66,6 +358,18 @@ class MqttClientHandleMessageTest extends MqttClientTestCase
 
         $this->event->expects($this->once())
                     ->method('recordTimestamp');
+
+        $this->event->expects($this->once())
+                    ->method('setTraceId')
+                    ->with($traceID);
+
+        $this->event->expects($this->once())
+                    ->method('setSpanId')
+                    ->with($spanID);
+
+        $this->event->expects($this->once())
+                    ->method('setParentSpanId')
+                    ->with($parentSpanID);
 
         $this->event->expects($this->once())
                     ->method('record');
@@ -108,6 +412,10 @@ class MqttClientHandleMessageTest extends MqttClientTestCase
         $this->setReflectionPropertyValue('data', [ 'topic' => 'topic' ]);
         $this->setReflectionPropertyValue('level', AnalyticsDetailLevel::Detailed);
 
+        $traceID      = '7b333e15-aa78-4957-a402-731aecbb358e';
+        $spanID       = '24ec5f90-7458-4dd5-bb51-7a1e8f4baafe';
+        $parentSpanID = '8b1f87b5-8383-4413-a341-7619cd4b9948';
+
         $property = $this->reflection->getParentClass()->getProperty('settings');
         $property->setAccessible(TRUE);
         $property->setValue($this->class, $this->settings);
@@ -122,9 +430,27 @@ class MqttClientHandleMessageTest extends MqttClientTestCase
                           ->with('outbound_requests_log')
                           ->willReturn($this->event);
 
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn($traceID);
+
+        $this->controller->shouldReceive('getSpanId')
+                         ->once()
+                         ->andReturn($spanID);
+
+        $this->controller->shouldReceive('getParentSpanId')
+                         ->once()
+                         ->andReturn($parentSpanID);
+
         $this->controller->shouldReceive('getSpanSpecifictags')
                          ->once()
                          ->andReturn([ 'call' => 'controller/method' ]);
+
+        $this->controller->shouldReceive('stopChildSpan')
+                         ->once();
 
         $tags = [
             'type'   => 'MQTT-response',
@@ -153,6 +479,18 @@ class MqttClientHandleMessageTest extends MqttClientTestCase
 
         $this->event->expects($this->once())
                     ->method('recordTimestamp');
+
+        $this->event->expects($this->once())
+                    ->method('setTraceId')
+                    ->with($traceID);
+
+        $this->event->expects($this->once())
+                    ->method('setSpanId')
+                    ->with($spanID);
+
+        $this->event->expects($this->once())
+                    ->method('setParentSpanId')
+                    ->with($parentSpanID);
 
         $this->event->expects($this->once())
                     ->method('record');
@@ -199,6 +537,10 @@ class MqttClientHandleMessageTest extends MqttClientTestCase
         $this->setReflectionPropertyValue('data', [ 'topic' => 'topic' ]);
         $this->setReflectionPropertyValue('level', AnalyticsDetailLevel::Full);
 
+        $traceID      = '7b333e15-aa78-4957-a402-731aecbb358e';
+        $spanID       = '24ec5f90-7458-4dd5-bb51-7a1e8f4baafe';
+        $parentSpanID = '8b1f87b5-8383-4413-a341-7619cd4b9948';
+
         $property = $this->reflection->getParentClass()->getProperty('settings');
         $property->setAccessible(TRUE);
         $property->setValue($this->class, $this->settings);
@@ -213,9 +555,27 @@ class MqttClientHandleMessageTest extends MqttClientTestCase
                           ->with('outbound_requests_log')
                           ->willReturn($this->event);
 
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn($traceID);
+
+        $this->controller->shouldReceive('getSpanId')
+                         ->once()
+                         ->andReturn($spanID);
+
+        $this->controller->shouldReceive('getParentSpanId')
+                         ->once()
+                         ->andReturn($parentSpanID);
+
         $this->controller->shouldReceive('getSpanSpecifictags')
                          ->once()
                          ->andReturn([ 'call' => 'controller/method' ]);
+
+        $this->controller->shouldReceive('stopChildSpan')
+                         ->once();
 
         $tags = [
             'type'   => 'MQTT-response',
@@ -244,6 +604,18 @@ class MqttClientHandleMessageTest extends MqttClientTestCase
 
         $this->event->expects($this->once())
                     ->method('recordTimestamp');
+
+        $this->event->expects($this->once())
+                    ->method('setTraceId')
+                    ->with($traceID);
+
+        $this->event->expects($this->once())
+                    ->method('setSpanId')
+                    ->with($spanID);
+
+        $this->event->expects($this->once())
+                    ->method('setParentSpanId')
+                    ->with($parentSpanID);
 
         $this->event->expects($this->once())
                     ->method('record');

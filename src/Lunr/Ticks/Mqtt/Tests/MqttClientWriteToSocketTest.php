@@ -12,6 +12,7 @@ namespace Lunr\Ticks\Mqtt\Tests;
 use Lunr\Ticks\AnalyticsDetailLevel;
 use PhpMqtt\Client\Exceptions\MqttClientException;
 use PhpMqtt\Client\MessageType;
+use RuntimeException;
 
 /**
  * This class contains the write tests for the MqttClient.
@@ -34,11 +35,11 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
     }
 
     /**
-     * Test that writeToSocket() logs unknown requests at analytics detail level Info.
+     * Test that writeToSocket() does not log if trace ID is unavailable.
      *
      * @covers Lunr\Ticks\Mqtt\MqttClient::writeToSocket
      */
-    public function testWriteToSocketLogsUnknownMessageAtInfo(): void
+    public function testWriteToSocketLogsWithTraceIDUnavailable(): void
     {
         $this->setReflectionPropertyValue('socket', fopen('/dev/null', 'r+'));
         $this->setReflectionPropertyValue('data', [ 'topic' => 'topic' ]);
@@ -49,9 +50,255 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
                           ->with('outbound_requests_log')
                           ->willReturn($this->event);
 
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn(NULL);
+
+        $this->controller->shouldNotReceive('getSpanId');
+
+        $this->controller->shouldNotReceive('getParentSpanId');
+
+        $this->controller->shouldNotReceive('getSpanSpecifictags');
+
+        $this->controller->shouldNotReceive('stopChildSpan');
+
+        $this->messageProcessor->expects($this->once())
+                               ->method('parseAndValidateMessage')
+                               ->willThrowException(new MqttClientException('Unknown message!'));
+
+        $this->event->expects($this->never())
+                    ->method('addTags');
+
+        $this->event->expects($this->never())
+                    ->method('addFields');
+
+        $this->event->expects($this->once())
+                    ->method('recordTimestamp');
+
+        $this->event->expects($this->never())
+                    ->method('setTraceId');
+
+        $this->event->expects($this->never())
+                    ->method('setSpanId');
+
+        $this->event->expects($this->never())
+                    ->method('setParentSpanId');
+
+        $this->event->expects($this->never())
+                    ->method('record');
+
+        $floatval  = 1734352683.3516;
+        $stringval = '0.35160200 1734352683';
+
+        $this->mockFunction('microtime', fn(bool $float) => $float ? $floatval : $stringval);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Trace ID not available!');
+
+        $method = $this->getReflectionMethod('writeToSocket');
+        $method->invokeArgs($this->class, [ 0x01 . 'data', NULL ]);
+
+        $this->unmockFunction('microtime');
+    }
+
+    /**
+     * Test that writeToSocket() does not log if span ID is unavailable.
+     *
+     * @covers Lunr\Ticks\Mqtt\MqttClient::writeToSocket
+     */
+    public function testWriteToSocketLogsWithSpanIDUnavailable(): void
+    {
+        $this->setReflectionPropertyValue('socket', fopen('/dev/null', 'r+'));
+        $this->setReflectionPropertyValue('data', [ 'topic' => 'topic' ]);
+        $this->setSettings();
+
+        $traceID = '7b333e15-aa78-4957-a402-731aecbb358e';
+
+        $this->eventLogger->expects($this->once())
+                          ->method('newEvent')
+                          ->with('outbound_requests_log')
+                          ->willReturn($this->event);
+
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn($traceID);
+
+        $this->controller->shouldReceive('getSpanId')
+                         ->once()
+                         ->andReturn(NULL);
+
+        $this->controller->shouldNotReceive('getParentSpanId');
+
+        $this->controller->shouldNotReceive('getSpanSpecifictags');
+
+        $this->controller->shouldNotReceive('stopChildSpan');
+
+        $this->messageProcessor->expects($this->once())
+                               ->method('parseAndValidateMessage')
+                               ->willThrowException(new MqttClientException('Unknown message!'));
+
+        $this->event->expects($this->never())
+                    ->method('addTags');
+
+        $this->event->expects($this->never())
+                    ->method('addFields');
+
+        $this->event->expects($this->once())
+                    ->method('recordTimestamp');
+
+        $this->event->expects($this->once())
+                    ->method('setTraceId')
+                    ->with($traceID);
+
+        $this->event->expects($this->never())
+                    ->method('setSpanId');
+
+        $this->event->expects($this->never())
+                    ->method('setParentSpanId');
+
+        $this->event->expects($this->never())
+                    ->method('record');
+
+        $floatval  = 1734352683.3516;
+        $stringval = '0.35160200 1734352683';
+
+        $this->mockFunction('microtime', fn(bool $float) => $float ? $floatval : $stringval);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Span ID not available!');
+
+        $method = $this->getReflectionMethod('writeToSocket');
+        $method->invokeArgs($this->class, [ 0x01 . 'data', NULL ]);
+
+        $this->unmockFunction('microtime');
+    }
+
+    /**
+     * Test that writeToSocket() does not log if parent span ID is unavailable.
+     *
+     * @covers Lunr\Ticks\Mqtt\MqttClient::writeToSocket
+     */
+    public function testWriteToSocketLogsWithParentSpanIDUnavailable(): void
+    {
+        $this->setReflectionPropertyValue('socket', fopen('/dev/null', 'r+'));
+        $this->setReflectionPropertyValue('data', [ 'topic' => 'topic' ]);
+        $this->setSettings();
+
+        $traceID = '7b333e15-aa78-4957-a402-731aecbb358e';
+        $spanID  = '24ec5f90-7458-4dd5-bb51-7a1e8f4baafe';
+
+        $this->eventLogger->expects($this->once())
+                          ->method('newEvent')
+                          ->with('outbound_requests_log')
+                          ->willReturn($this->event);
+
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn($traceID);
+
+        $this->controller->shouldReceive('getSpanId')
+                         ->once()
+                         ->andReturn($spanID);
+
+        $this->controller->shouldReceive('getParentSpanId')
+                         ->once()
+                         ->andReturn(NULL);
+
+        $this->controller->shouldNotReceive('getSpanSpecifictags');
+
+        $this->controller->shouldNotReceive('stopChildSpan');
+
+        $this->messageProcessor->expects($this->once())
+                               ->method('parseAndValidateMessage')
+                               ->willThrowException(new MqttClientException('Unknown message!'));
+
+        $this->event->expects($this->never())
+                    ->method('addTags');
+
+        $this->event->expects($this->never())
+                    ->method('addFields');
+
+        $this->event->expects($this->once())
+                    ->method('recordTimestamp');
+
+        $this->event->expects($this->once())
+                    ->method('setTraceId')
+                    ->with($traceID);
+
+        $this->event->expects($this->once())
+                    ->method('setSpanId')
+                    ->with($spanID);
+
+        $this->event->expects($this->never())
+                    ->method('setParentSpanId');
+
+        $this->event->expects($this->never())
+                    ->method('record');
+
+        $floatval  = 1734352683.3516;
+        $stringval = '0.35160200 1734352683';
+
+        $this->mockFunction('microtime', fn(bool $float) => $float ? $floatval : $stringval);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Parent Span ID not available!');
+
+        $method = $this->getReflectionMethod('writeToSocket');
+        $method->invokeArgs($this->class, [ 0x01 . 'data', NULL ]);
+
+        $this->unmockFunction('microtime');
+    }
+
+    /**
+     * Test that writeToSocket() logs unknown requests at analytics detail level Info.
+     *
+     * @covers Lunr\Ticks\Mqtt\MqttClient::writeToSocket
+     */
+    public function testWriteToSocketLogsUnknownMessageAtInfo(): void
+    {
+        $this->setReflectionPropertyValue('socket', fopen('/dev/null', 'r+'));
+        $this->setReflectionPropertyValue('data', [ 'topic' => 'topic' ]);
+        $this->setSettings();
+
+        $traceID      = '7b333e15-aa78-4957-a402-731aecbb358e';
+        $spanID       = '24ec5f90-7458-4dd5-bb51-7a1e8f4baafe';
+        $parentSpanID = '8b1f87b5-8383-4413-a341-7619cd4b9948';
+
+        $this->eventLogger->expects($this->once())
+                          ->method('newEvent')
+                          ->with('outbound_requests_log')
+                          ->willReturn($this->event);
+
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn($traceID);
+
+        $this->controller->shouldReceive('getSpanId')
+                         ->once()
+                         ->andReturn($spanID);
+
+        $this->controller->shouldReceive('getParentSpanId')
+                         ->once()
+                         ->andReturn($parentSpanID);
+
         $this->controller->shouldReceive('getSpanSpecifictags')
                          ->once()
                          ->andReturn([ 'call' => 'controller/method' ]);
+
+        $this->controller->shouldReceive('stopChildSpan')
+                         ->once();
 
         $this->messageProcessor->expects($this->once())
                                ->method('parseAndValidateMessage')
@@ -82,6 +329,18 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
                     ->method('recordTimestamp');
 
         $this->event->expects($this->once())
+                    ->method('setTraceId')
+                    ->with($traceID);
+
+        $this->event->expects($this->once())
+                    ->method('setSpanId')
+                    ->with($spanID);
+
+        $this->event->expects($this->once())
+                    ->method('setParentSpanId')
+                    ->with($parentSpanID);
+
+        $this->event->expects($this->once())
                     ->method('record');
 
         $floatval  = 1734352683.3516;
@@ -107,6 +366,10 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
         $this->setReflectionPropertyValue('level', AnalyticsDetailLevel::Detailed);
         $this->setSettings();
 
+        $traceID      = '7b333e15-aa78-4957-a402-731aecbb358e';
+        $spanID       = '24ec5f90-7458-4dd5-bb51-7a1e8f4baafe';
+        $parentSpanID = '8b1f87b5-8383-4413-a341-7619cd4b9948';
+
         $string  = 'a3f8d1c9b2e6fa5c04df7e1a29cbb147d58ea6c2f24d2bd5e6d471f8420a3ce1b9b0f3dc1798423e3c7235b984eefc56e471a93d9fe7bc53182c9b3a1ed0d5c';
         $string .= '1f1f89c3db7f2315ea0dbbb7d3d67859fa12b421a378c35ad40fd3f29c48118d9c1a2e1f571e3457bb27c61fb91d3ed1a3c4de918f4beaad8452bc65fd0b983';
         $string .= 'e45c6f3d17a62b0f3e7a0b2d3f16b9180f246e2dcbf2e53db349f10427cbba8a6eb1da94f5c2b3f8a0c5de82f79a14c8d2fb093671f8d6bca3a129dfc384dc0';
@@ -117,9 +380,27 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
                           ->with('outbound_requests_log')
                           ->willReturn($this->event);
 
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn($traceID);
+
+        $this->controller->shouldReceive('getSpanId')
+                         ->once()
+                         ->andReturn($spanID);
+
+        $this->controller->shouldReceive('getParentSpanId')
+                         ->once()
+                         ->andReturn($parentSpanID);
+
         $this->controller->shouldReceive('getSpanSpecifictags')
                          ->once()
                          ->andReturn([ 'call' => 'controller/method' ]);
+
+        $this->controller->shouldReceive('stopChildSpan')
+                         ->once();
 
         $this->messageProcessor->expects($this->once())
                                ->method('parseAndValidateMessage')
@@ -152,6 +433,18 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
                     ->method('recordTimestamp');
 
         $this->event->expects($this->once())
+                    ->method('setTraceId')
+                    ->with($traceID);
+
+        $this->event->expects($this->once())
+                    ->method('setSpanId')
+                    ->with($spanID);
+
+        $this->event->expects($this->once())
+                    ->method('setParentSpanId')
+                    ->with($parentSpanID);
+
+        $this->event->expects($this->once())
                     ->method('record');
 
         $floatval  = 1734352683.3516;
@@ -177,6 +470,10 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
         $this->setReflectionPropertyValue('level', AnalyticsDetailLevel::Full);
         $this->setSettings();
 
+        $traceID      = '7b333e15-aa78-4957-a402-731aecbb358e';
+        $spanID       = '24ec5f90-7458-4dd5-bb51-7a1e8f4baafe';
+        $parentSpanID = '8b1f87b5-8383-4413-a341-7619cd4b9948';
+
         $string  = 'a3f8d1c9b2e6fa5c04df7e1a29cbb147d58ea6c2f24d2bd5e6d471f8420a3ce1b9b0f3dc1798423e3c7235b984eefc56e471a93d9fe7bc53182c9b3a1ed0d5c';
         $string .= '1f1f89c3db7f2315ea0dbbb7d3d67859fa12b421a378c35ad40fd3f29c48118d9c1a2e1f571e3457bb27c61fb91d3ed1a3c4de918f4beaad8452bc65fd0b983';
         $string .= 'e45c6f3d17a62b0f3e7a0b2d3f16b9180f246e2dcbf2e53db349f10427cbba8a6eb1da94f5c2b3f8a0c5de82f79a14c8d2fb093671f8d6bca3a129dfc384dc0';
@@ -187,9 +484,27 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
                           ->with('outbound_requests_log')
                           ->willReturn($this->event);
 
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn($traceID);
+
+        $this->controller->shouldReceive('getSpanId')
+                         ->once()
+                         ->andReturn($spanID);
+
+        $this->controller->shouldReceive('getParentSpanId')
+                         ->once()
+                         ->andReturn($parentSpanID);
+
         $this->controller->shouldReceive('getSpanSpecifictags')
                          ->once()
                          ->andReturn([ 'call' => 'controller/method' ]);
+
+        $this->controller->shouldReceive('stopChildSpan')
+                         ->once();
 
         $this->messageProcessor->expects($this->once())
                                ->method('parseAndValidateMessage')
@@ -219,6 +534,18 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
                     ->with($fields);
 
         $this->event->expects($this->once())
+                    ->method('setTraceId')
+                    ->with($traceID);
+
+        $this->event->expects($this->once())
+                    ->method('setSpanId')
+                    ->with($spanID);
+
+        $this->event->expects($this->once())
+                    ->method('setParentSpanId')
+                    ->with($parentSpanID);
+
+        $this->event->expects($this->once())
                     ->method('recordTimestamp');
 
         $this->event->expects($this->once())
@@ -246,6 +573,10 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
         $this->setReflectionPropertyValue('data', [ 'topic' => 'topic' ]);
         $this->setSettings();
 
+        $traceID      = '7b333e15-aa78-4957-a402-731aecbb358e';
+        $spanID       = '24ec5f90-7458-4dd5-bb51-7a1e8f4baafe';
+        $parentSpanID = '8b1f87b5-8383-4413-a341-7619cd4b9948';
+
         $input = hex2bin('101900064d51497364700300000a000b');
 
         $this->eventLogger->expects($this->once())
@@ -253,9 +584,27 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
                           ->with('outbound_requests_log')
                           ->willReturn($this->event);
 
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn($traceID);
+
+        $this->controller->shouldReceive('getSpanId')
+                         ->once()
+                         ->andReturn($spanID);
+
+        $this->controller->shouldReceive('getParentSpanId')
+                         ->once()
+                         ->andReturn($parentSpanID);
+
         $this->controller->shouldReceive('getSpanSpecifictags')
                          ->once()
                          ->andReturn([ 'call' => 'controller/method' ]);
+
+        $this->controller->shouldReceive('stopChildSpan')
+                         ->once();
 
         $this->messageProcessor->expects($this->once())
                                ->method('parseAndValidateMessage')
@@ -284,6 +633,18 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
 
         $this->event->expects($this->once())
                     ->method('recordTimestamp');
+
+        $this->event->expects($this->once())
+                    ->method('setTraceId')
+                    ->with($traceID);
+
+        $this->event->expects($this->once())
+                    ->method('setSpanId')
+                    ->with($spanID);
+
+        $this->event->expects($this->once())
+                    ->method('setParentSpanId')
+                    ->with($parentSpanID);
 
         $this->event->expects($this->once())
                     ->method('record');
@@ -311,6 +672,10 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
         $this->setReflectionPropertyValue('level', AnalyticsDetailLevel::Detailed);
         $this->setSettings();
 
+        $traceID      = '7b333e15-aa78-4957-a402-731aecbb358e';
+        $spanID       = '24ec5f90-7458-4dd5-bb51-7a1e8f4baafe';
+        $parentSpanID = '8b1f87b5-8383-4413-a341-7619cd4b9948';
+
         $string  = '1019d1c9b2e6fa5c04df7e1a29cbb147d58ea6c2f24d2bd5e6d471f8420a3ce1b9b0f3dc1798423e3c7235b984eefc56e471a93d9fe7bc53182c9b3a1ed0d5c';
         $string .= '1f1f89c3db7f2315ea0dbbb7d3d67859fa12b421a378c35ad40fd3f29c48118d9c1a2e1f571e3457bb27c61fb91d3ed1a3c4de918f4beaad8452bc65fd0b983';
         $string .= 'e45c6f3d17a62b0f3e7a0b2d3f16b9180f246e2dcbf2e53db349f10427cbba8a6eb1da94f5c2b3f8a0c5de82f79a14c8d2fb093671f8d6bca3a129dfc384dc0';
@@ -321,9 +686,27 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
                           ->with('outbound_requests_log')
                           ->willReturn($this->event);
 
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn($traceID);
+
+        $this->controller->shouldReceive('getSpanId')
+                         ->once()
+                         ->andReturn($spanID);
+
+        $this->controller->shouldReceive('getParentSpanId')
+                         ->once()
+                         ->andReturn($parentSpanID);
+
         $this->controller->shouldReceive('getSpanSpecifictags')
                          ->once()
                          ->andReturn([ 'call' => 'controller/method' ]);
+
+        $this->controller->shouldReceive('stopChildSpan')
+                         ->once();
 
         $this->messageProcessor->expects($this->once())
                                ->method('parseAndValidateMessage')
@@ -354,6 +737,18 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
 
         $this->event->expects($this->once())
                     ->method('recordTimestamp');
+
+        $this->event->expects($this->once())
+                    ->method('setTraceId')
+                    ->with($traceID);
+
+        $this->event->expects($this->once())
+                    ->method('setSpanId')
+                    ->with($spanID);
+
+        $this->event->expects($this->once())
+                    ->method('setParentSpanId')
+                    ->with($parentSpanID);
 
         $this->event->expects($this->once())
                     ->method('record');
@@ -381,6 +776,10 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
         $this->setReflectionPropertyValue('level', AnalyticsDetailLevel::Full);
         $this->setSettings();
 
+        $traceID      = '7b333e15-aa78-4957-a402-731aecbb358e';
+        $spanID       = '24ec5f90-7458-4dd5-bb51-7a1e8f4baafe';
+        $parentSpanID = '8b1f87b5-8383-4413-a341-7619cd4b9948';
+
         $string  = '1019d1c9b2e6fa5c04df7e1a29cbb147d58ea6c2f24d2bd5e6d471f8420a3ce1b9b0f3dc1798423e3c7235b984eefc56e471a93d9fe7bc53182c9b3a1ed0d5c';
         $string .= '1f1f89c3db7f2315ea0dbbb7d3d67859fa12b421a378c35ad40fd3f29c48118d9c1a2e1f571e3457bb27c61fb91d3ed1a3c4de918f4beaad8452bc65fd0b983';
         $string .= 'e45c6f3d17a62b0f3e7a0b2d3f16b9180f246e2dcbf2e53db349f10427cbba8a6eb1da94f5c2b3f8a0c5de82f79a14c8d2fb093671f8d6bca3a129dfc384dc0';
@@ -391,9 +790,27 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
                           ->with('outbound_requests_log')
                           ->willReturn($this->event);
 
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn($traceID);
+
+        $this->controller->shouldReceive('getSpanId')
+                         ->once()
+                         ->andReturn($spanID);
+
+        $this->controller->shouldReceive('getParentSpanId')
+                         ->once()
+                         ->andReturn($parentSpanID);
+
         $this->controller->shouldReceive('getSpanSpecifictags')
                          ->once()
                          ->andReturn([ 'call' => 'controller/method' ]);
+
+        $this->controller->shouldReceive('stopChildSpan')
+                         ->once();
 
         $this->messageProcessor->expects($this->once())
                                ->method('parseAndValidateMessage')
@@ -426,6 +843,18 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
                     ->method('recordTimestamp');
 
         $this->event->expects($this->once())
+                    ->method('setTraceId')
+                    ->with($traceID);
+
+        $this->event->expects($this->once())
+                    ->method('setSpanId')
+                    ->with($spanID);
+
+        $this->event->expects($this->once())
+                    ->method('setParentSpanId')
+                    ->with($parentSpanID);
+
+        $this->event->expects($this->once())
                     ->method('record');
 
         $floatval  = 1734352683.3516;
@@ -450,6 +879,10 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
         $this->setReflectionPropertyValue('data', [ 'topic' => 'topic' ]);
         $this->setSettings();
 
+        $traceID      = '7b333e15-aa78-4957-a402-731aecbb358e';
+        $spanID       = '24ec5f90-7458-4dd5-bb51-7a1e8f4baafe';
+        $parentSpanID = '8b1f87b5-8383-4413-a341-7619cd4b9948';
+
         $input = chr(0xe0) . chr(0x00);
 
         $this->eventLogger->expects($this->once())
@@ -457,9 +890,27 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
                           ->with('outbound_requests_log')
                           ->willReturn($this->event);
 
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn($traceID);
+
+        $this->controller->shouldReceive('getSpanId')
+                         ->once()
+                         ->andReturn($spanID);
+
+        $this->controller->shouldReceive('getParentSpanId')
+                         ->once()
+                         ->andReturn($parentSpanID);
+
         $this->controller->shouldReceive('getSpanSpecifictags')
                          ->once()
                          ->andReturn([ 'call' => 'controller/method' ]);
+
+        $this->controller->shouldReceive('stopChildSpan')
+                         ->once();
 
         $this->messageProcessor->expects($this->once())
                                ->method('parseAndValidateMessage')
@@ -488,6 +939,18 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
 
         $this->event->expects($this->once())
                     ->method('recordTimestamp');
+
+        $this->event->expects($this->once())
+                    ->method('setTraceId')
+                    ->with($traceID);
+
+        $this->event->expects($this->once())
+                    ->method('setSpanId')
+                    ->with($spanID);
+
+        $this->event->expects($this->once())
+                    ->method('setParentSpanId')
+                    ->with($parentSpanID);
 
         $this->event->expects($this->once())
                     ->method('record');
@@ -515,6 +978,10 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
         $this->setReflectionPropertyValue('level', AnalyticsDetailLevel::Detailed);
         $this->setSettings();
 
+        $traceID      = '7b333e15-aa78-4957-a402-731aecbb358e';
+        $spanID       = '24ec5f90-7458-4dd5-bb51-7a1e8f4baafe';
+        $parentSpanID = '8b1f87b5-8383-4413-a341-7619cd4b9948';
+
         $input = chr(0xe0) . chr(0x00);
 
         $this->eventLogger->expects($this->once())
@@ -522,9 +989,27 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
                           ->with('outbound_requests_log')
                           ->willReturn($this->event);
 
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn($traceID);
+
+        $this->controller->shouldReceive('getSpanId')
+                         ->once()
+                         ->andReturn($spanID);
+
+        $this->controller->shouldReceive('getParentSpanId')
+                         ->once()
+                         ->andReturn($parentSpanID);
+
         $this->controller->shouldReceive('getSpanSpecifictags')
                          ->once()
                          ->andReturn([ 'call' => 'controller/method' ]);
+
+        $this->controller->shouldReceive('stopChildSpan')
+                         ->once();
 
         $this->messageProcessor->expects($this->once())
                                ->method('parseAndValidateMessage')
@@ -554,6 +1039,18 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
 
         $this->event->expects($this->once())
                     ->method('recordTimestamp');
+
+        $this->event->expects($this->once())
+                    ->method('setTraceId')
+                    ->with($traceID);
+
+        $this->event->expects($this->once())
+                    ->method('setSpanId')
+                    ->with($spanID);
+
+        $this->event->expects($this->once())
+                    ->method('setParentSpanId')
+                    ->with($parentSpanID);
 
         $this->event->expects($this->once())
                     ->method('record');
@@ -581,6 +1078,10 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
         $this->setReflectionPropertyValue('level', AnalyticsDetailLevel::Full);
         $this->setSettings();
 
+        $traceID      = '7b333e15-aa78-4957-a402-731aecbb358e';
+        $spanID       = '24ec5f90-7458-4dd5-bb51-7a1e8f4baafe';
+        $parentSpanID = '8b1f87b5-8383-4413-a341-7619cd4b9948';
+
         $input = chr(0xe0) . chr(0x00);
 
         $this->eventLogger->expects($this->once())
@@ -588,9 +1089,27 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
                           ->with('outbound_requests_log')
                           ->willReturn($this->event);
 
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn($traceID);
+
+        $this->controller->shouldReceive('getSpanId')
+                         ->once()
+                         ->andReturn($spanID);
+
+        $this->controller->shouldReceive('getParentSpanId')
+                         ->once()
+                         ->andReturn($parentSpanID);
+
         $this->controller->shouldReceive('getSpanSpecifictags')
                          ->once()
                          ->andReturn([ 'call' => 'controller/method' ]);
+
+        $this->controller->shouldReceive('stopChildSpan')
+                         ->once();
 
         $this->messageProcessor->expects($this->once())
                                ->method('parseAndValidateMessage')
@@ -622,6 +1141,18 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
                     ->method('recordTimestamp');
 
         $this->event->expects($this->once())
+                    ->method('setTraceId')
+                    ->with($traceID);
+
+        $this->event->expects($this->once())
+                    ->method('setSpanId')
+                    ->with($spanID);
+
+        $this->event->expects($this->once())
+                    ->method('setParentSpanId')
+                    ->with($parentSpanID);
+
+        $this->event->expects($this->once())
                     ->method('record');
 
         $floatval  = 1734352683.3516;
@@ -646,14 +1177,36 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
         $this->setReflectionPropertyValue('data', [ 'topic' => 'topic' ]);
         $this->setSettings();
 
+        $traceID      = '7b333e15-aa78-4957-a402-731aecbb358e';
+        $spanID       = '24ec5f90-7458-4dd5-bb51-7a1e8f4baafe';
+        $parentSpanID = '8b1f87b5-8383-4413-a341-7619cd4b9948';
+
         $this->eventLogger->expects($this->once())
                           ->method('newEvent')
                           ->with('outbound_requests_log')
                           ->willReturn($this->event);
 
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn($traceID);
+
+        $this->controller->shouldReceive('getSpanId')
+                         ->once()
+                         ->andReturn($spanID);
+
+        $this->controller->shouldReceive('getParentSpanId')
+                         ->once()
+                         ->andReturn($parentSpanID);
+
         $this->controller->shouldReceive('getSpanSpecifictags')
                          ->once()
                          ->andReturn([ 'call' => 'controller/method' ]);
+
+        $this->controller->shouldReceive('stopChildSpan')
+                         ->once();
 
         $this->messageProcessor->expects($this->once())
                                ->method('parseAndValidateMessage')
@@ -688,6 +1241,18 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
                     ->method('recordTimestamp');
 
         $this->event->expects($this->once())
+                    ->method('setTraceId')
+                    ->with($traceID);
+
+        $this->event->expects($this->once())
+                    ->method('setSpanId')
+                    ->with($spanID);
+
+        $this->event->expects($this->once())
+                    ->method('setParentSpanId')
+                    ->with($parentSpanID);
+
+        $this->event->expects($this->once())
                     ->method('record');
 
         $floatval  = 1734352683.3516;
@@ -713,6 +1278,10 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
         $this->setReflectionPropertyValue('level', AnalyticsDetailLevel::Detailed);
         $this->setSettings();
 
+        $traceID      = '7b333e15-aa78-4957-a402-731aecbb358e';
+        $spanID       = '24ec5f90-7458-4dd5-bb51-7a1e8f4baafe';
+        $parentSpanID = '8b1f87b5-8383-4413-a341-7619cd4b9948';
+
         $string  = '1019d1c9b2e6fa5c04df7e1a29cbb147d58ea6c2f24d2bd5e6d471f8420a3ce1b9b0f3dc1798423e3c7235b984eefc56e471a93d9fe7bc53182c9b3a1ed0d5c';
         $string .= '1f1f89c3db7f2315ea0dbbb7d3d67859fa12b421a378c35ad40fd3f29c48118d9c1a2e1f571e3457bb27c61fb91d3ed1a3c4de918f4beaad8452bc65fd0b983';
         $string .= 'e45c6f3d17a62b0f3e7a0b2d3f16b9180f246e2dcbf2e53db349f10427cbba8a6eb1da94f5c2b3f8a0c5de82f79a14c8d2fb093671f8d6bca3a129dfc384dc0';
@@ -723,9 +1292,27 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
                           ->with('outbound_requests_log')
                           ->willReturn($this->event);
 
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn($traceID);
+
+        $this->controller->shouldReceive('getSpanId')
+                         ->once()
+                         ->andReturn($spanID);
+
+        $this->controller->shouldReceive('getParentSpanId')
+                         ->once()
+                         ->andReturn($parentSpanID);
+
         $this->controller->shouldReceive('getSpanSpecifictags')
                          ->once()
                          ->andReturn([ 'call' => 'controller/method' ]);
+
+        $this->controller->shouldReceive('stopChildSpan')
+                         ->once();
 
         $this->messageProcessor->expects($this->once())
                                ->method('parseAndValidateMessage')
@@ -766,6 +1353,18 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
                     ->method('recordTimestamp');
 
         $this->event->expects($this->once())
+                    ->method('setTraceId')
+                    ->with($traceID);
+
+        $this->event->expects($this->once())
+                    ->method('setSpanId')
+                    ->with($spanID);
+
+        $this->event->expects($this->once())
+                    ->method('setParentSpanId')
+                    ->with($parentSpanID);
+
+        $this->event->expects($this->once())
                     ->method('record');
 
         $floatval  = 1734352683.3516;
@@ -791,6 +1390,10 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
         $this->setReflectionPropertyValue('level', AnalyticsDetailLevel::Full);
         $this->setSettings();
 
+        $traceID      = '7b333e15-aa78-4957-a402-731aecbb358e';
+        $spanID       = '24ec5f90-7458-4dd5-bb51-7a1e8f4baafe';
+        $parentSpanID = '8b1f87b5-8383-4413-a341-7619cd4b9948';
+
         $string  = '1019d1c9b2e6fa5c04df7e1a29cbb147d58ea6c2f24d2bd5e6d471f8420a3ce1b9b0f3dc1798423e3c7235b984eefc56e471a93d9fe7bc53182c9b3a1ed0d5c';
         $string .= '1f1f89c3db7f2315ea0dbbb7d3d67859fa12b421a378c35ad40fd3f29c48118d9c1a2e1f571e3457bb27c61fb91d3ed1a3c4de918f4beaad8452bc65fd0b983';
         $string .= 'e45c6f3d17a62b0f3e7a0b2d3f16b9180f246e2dcbf2e53db349f10427cbba8a6eb1da94f5c2b3f8a0c5de82f79a14c8d2fb093671f8d6bca3a129dfc384dc0';
@@ -801,9 +1404,27 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
                           ->with('outbound_requests_log')
                           ->willReturn($this->event);
 
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn($traceID);
+
+        $this->controller->shouldReceive('getSpanId')
+                         ->once()
+                         ->andReturn($spanID);
+
+        $this->controller->shouldReceive('getParentSpanId')
+                         ->once()
+                         ->andReturn($parentSpanID);
+
         $this->controller->shouldReceive('getSpanSpecifictags')
                          ->once()
                          ->andReturn([ 'call' => 'controller/method' ]);
+
+        $this->controller->shouldReceive('stopChildSpan')
+                         ->once();
 
         $this->messageProcessor->expects($this->once())
                                ->method('parseAndValidateMessage')
@@ -844,6 +1465,18 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
                     ->method('recordTimestamp');
 
         $this->event->expects($this->once())
+                    ->method('setTraceId')
+                    ->with($traceID);
+
+        $this->event->expects($this->once())
+                    ->method('setSpanId')
+                    ->with($spanID);
+
+        $this->event->expects($this->once())
+                    ->method('setParentSpanId')
+                    ->with($parentSpanID);
+
+        $this->event->expects($this->once())
                     ->method('record');
 
         $floatval  = 1734352683.3516;
@@ -869,14 +1502,36 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
         $this->setReflectionPropertyValue('level', AnalyticsDetailLevel::Full);
         $this->setSettings();
 
+        $traceID      = '7b333e15-aa78-4957-a402-731aecbb358e';
+        $spanID       = '24ec5f90-7458-4dd5-bb51-7a1e8f4baafe';
+        $parentSpanID = '8b1f87b5-8383-4413-a341-7619cd4b9948';
+
         $this->eventLogger->expects($this->once())
                           ->method('newEvent')
                           ->with('outbound_requests_log')
                           ->willReturn($this->event);
 
+        $this->controller->shouldReceive('startChildSpan')
+                         ->once();
+
+        $this->controller->shouldReceive('getTraceId')
+                         ->once()
+                         ->andReturn($traceID);
+
+        $this->controller->shouldReceive('getSpanId')
+                         ->once()
+                         ->andReturn($spanID);
+
+        $this->controller->shouldReceive('getParentSpanId')
+                         ->once()
+                         ->andReturn($parentSpanID);
+
         $this->controller->shouldReceive('getSpanSpecifictags')
                          ->once()
                          ->andReturn([ 'call' => 'controller/method' ]);
+
+        $this->controller->shouldReceive('stopChildSpan')
+                         ->once();
 
         $this->messageProcessor->expects($this->once())
                                ->method('parseAndValidateMessage')
@@ -915,6 +1570,18 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
 
         $this->event->expects($this->once())
                     ->method('recordTimestamp');
+
+        $this->event->expects($this->once())
+                    ->method('setTraceId')
+                    ->with($traceID);
+
+        $this->event->expects($this->once())
+                    ->method('setSpanId')
+                    ->with($spanID);
+
+        $this->event->expects($this->once())
+                    ->method('setParentSpanId')
+                    ->with($parentSpanID);
 
         $this->event->expects($this->once())
                     ->method('record');

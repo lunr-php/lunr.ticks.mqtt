@@ -23,6 +23,7 @@ use PhpMqtt\Client\MessageProcessors\Mqtt311MessageProcessor;
 use PhpMqtt\Client\MessageProcessors\Mqtt31MessageProcessor;
 use PhpMqtt\Client\MqttClient as BaseMqttClient;
 use Psr\Log\LoggerInterface;
+use RuntimeException;
 
 /**
  * Overrides MqttClient methods so we can inject introspection calls.
@@ -134,6 +135,9 @@ class MqttClient extends BaseMqttClient
         $event = $this->eventLogger->newEvent('outbound_requests_log');
 
         $event->recordTimestamp();
+        $event->setTraceId($this->tracingController->getTraceId() ?? throw new RuntimeException('Trace ID not available!'));
+        $event->setSpanId($this->tracingController->getSpanId() ?? throw new RuntimeException('Span ID not available!'));
+        $event->setParentSpanId($this->tracingController->getParentSpanId() ?? throw new RuntimeException('Parent Span ID not available!'));
         $event->addTags(array_merge($this->tracingController->getSpanSpecificTags(), $tags));
         $event->addFields($fields);
         $event->record();
@@ -172,6 +176,7 @@ class MqttClient extends BaseMqttClient
      */
     protected function writeToSocket(string $data, ?int $length = NULL): void
     {
+        $this->tracingController->startChildSpan();
         $startTimestamp = microtime(TRUE);
         parent::writeToSocket($data, $length);
         $endTimestamp = microtime(TRUE);
@@ -247,6 +252,8 @@ class MqttClient extends BaseMqttClient
         }
 
         $this->record($fields, $tags);
+
+        $this->tracingController->stopChildSpan();
     }
 
     /**
@@ -258,6 +265,7 @@ class MqttClient extends BaseMqttClient
      */
     protected function handleMessage(Message $message): void
     {
+        $this->tracingController->startChildSpan();
         $startTimestamp = microtime(TRUE);
         parent::handleMessage($message);
         $endTimestamp = microtime(TRUE);
@@ -289,6 +297,8 @@ class MqttClient extends BaseMqttClient
         }
 
         $this->record($fields, $tags);
+
+        $this->tracingController->stopChildSpan();
     }
 
 }
