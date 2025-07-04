@@ -213,19 +213,37 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
                          ->once()
                          ->andReturn(NULL);
 
-        $this->controller->shouldNotReceive('getSpanSpecifictags');
+        $this->controller->shouldReceive('getSpanSpecifictags')
+                         ->once()
+                         ->andReturn([ 'call' => 'controller/method' ]);
 
-        $this->controller->shouldNotReceive('stopChildSpan');
+        $this->controller->shouldReceive('stopChildSpan')
+                         ->once();
 
         $this->messageProcessor->expects($this->once())
                                ->method('parseAndValidateMessage')
                                ->willThrowException(new MqttClientException('Unknown message!'));
 
-        $this->event->expects($this->never())
-                    ->method('addTags');
+        $tags = [
+            'type'   => 'MQTT-request',
+            'domain' => 'host',
+            'call'   => 'controller/method',
+        ];
 
-        $this->event->expects($this->never())
-                    ->method('addFields');
+        $this->event->expects($this->once())
+                    ->method('addTags')
+                    ->with($tags);
+
+        $fields = [
+            'url'            => NULL,
+            'startTimestamp' => 1734352683.3516,
+            'endTimestamp'   => 1734352683.3516,
+            'executionTime'  => 0.0,
+        ];
+
+        $this->event->expects($this->once())
+                    ->method('addFields')
+                    ->with($fields);
 
         $this->event->expects($this->once())
                     ->method('recordTimestamp');
@@ -241,16 +259,13 @@ class MqttClientWriteToSocketTest extends MqttClientTestCase
         $this->event->expects($this->never())
                     ->method('setParentSpanId');
 
-        $this->event->expects($this->never())
+        $this->event->expects($this->once())
                     ->method('record');
 
         $floatval  = 1734352683.3516;
         $stringval = '0.35160200 1734352683';
 
         $this->mockFunction('microtime', fn(bool $float) => $float ? $floatval : $stringval);
-
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Parent Span ID not available!');
 
         $method = $this->getReflectionMethod('writeToSocket');
         $method->invokeArgs($this->class, [ 0x01 . 'data', NULL ]);
