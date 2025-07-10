@@ -123,6 +123,18 @@ class MqttClient extends BaseMqttClient
     }
 
     /**
+     * Set a custom analytics detail level.
+     *
+     * @param AnalyticsDetailLevel $level The analytics detail level to set
+     *
+     * @return void
+     */
+    public function setAnalyticsDetailLevel(AnalyticsDetailLevel $level): void
+    {
+        $this->level = $level;
+    }
+
+    /**
      * Finalize measurement point data and send to InfluxDB.
      *
      * @param Fields $fields Field data

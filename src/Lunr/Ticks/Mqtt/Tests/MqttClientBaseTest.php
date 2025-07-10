@@ -62,6 +62,18 @@ class MqttClientBaseTest extends MqttClientTestCase
         $this->assertInstanceOf(MessageProcessor::class, $messageProcessor);
     }
 
+    /**
+     * Test setAnalyticsDetailLevel().
+     *
+     * @covers Lunr\Ticks\Mqtt\MqttClient::setAnalyticsDetailLevel
+     */
+    public function testSetAnalyticsDetailLevel(): void
+    {
+        $this->class->setAnalyticsDetailLevel(AnalyticsDetailLevel::Detailed);
+
+        $this->assertPropertySame('level', AnalyticsDetailLevel::Detailed);
+    }
+
 }
 
 ?>
